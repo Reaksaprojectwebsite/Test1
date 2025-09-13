@@ -1,5 +1,5 @@
 // =====================
-// Attendance System (Testing Version)
+// Attendance System – Professional, Mobile-Friendly
 // =====================
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -11,58 +11,91 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
+app.use(express.static('public')); // for static assets like css/js
 
-// Attendance page
+// =====================
+// Attendance Form
+// =====================
 app.get("/", (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
     <head>
       <title>Attendance</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
       <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 50px; }
-        form { background: #fff; padding: 20px; border-radius: 10px; display: inline-block; }
-        input, button { padding: 10px; margin: 10px; width: 90%; }
-        button { background: #007BFF; color: #fff; border: none; cursor: pointer; }
-        button:hover { background: #0056b3; }
+        body { background: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
+        .container { max-width: 400px; margin-top: 80px; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { margin-bottom: 25px; color: #333; }
+        #status { margin-top: 15px; font-weight: bold; }
       </style>
     </head>
     <body>
-      <h2>Attendance Form</h2>
-      <form id="attendanceForm">
-        <input type="text" id="name" placeholder="Enter your name" required><br>
-        <button type="submit">Submit</button>
-      </form>
+      <div class="container text-center">
+        <h2>Attendance Form</h2>
+        <form id="attendanceForm">
+          <div class="mb-3">
+            <input type="text" id="name" class="form-control" placeholder="Enter your name" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Submit Attendance</button>
+        </form>
+        <div id="status"></div>
+      </div>
 
       <script>
-        document.getElementById("attendanceForm").addEventListener("submit", async function(e){
+        const form = document.getElementById("attendanceForm");
+        const status = document.getElementById("status");
+
+        form.addEventListener("submit", function(e){
           e.preventDefault();
+          status.innerHTML = "📍 Locating... Please wait";
+          status.style.color = "#0d6efd";
+
           let name = document.getElementById("name").value;
 
-          navigator.geolocation.getCurrentPosition(async function(position) {
+          if(!navigator.geolocation){
+            status.innerHTML = "⚠️ Geolocation not supported";
+            status.style.color = "#dc3545";
+            return;
+          }
+
+          navigator.geolocation.getCurrentPosition(async function(position){
             let data = {
               name: name,
               latitude: position.coords.latitude,
               longitude: position.coords.longitude
             };
 
-            let response = await fetch("/submit", {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify(data)
-            });
+            try {
+              let response = await fetch("/submit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+              });
+              let result = await response.json();
 
-            let result = await response.json();
-            if(result.status === "success"){
-              alert("✅ Attendance recorded!");
-            } else {
-              alert("⚠️ Something went wrong!");
+              if(result.status === "success"){
+                status.innerHTML = "✅ Attendance recorded successfully!";
+                status.style.color = "#198754";
+              } else if(result.status === "closed") {
+                status.innerHTML = "⏰ Attendance is currently closed";
+                status.style.color = "#ffc107";
+              } else {
+                status.innerHTML = "⚠️ Something went wrong!";
+                status.style.color = "#dc3545";
+              }
+            } catch(err){
+              status.innerHTML = "⚠️ Error submitting attendance!";
+              status.style.color = "#dc3545";
+              console.error(err);
             }
 
-            document.getElementById("name").value = "";
+            form.reset();
           }, function(error){
-            alert("⚠️ Please allow location access!");
-          });
+            status.innerHTML = "⚠️ Location error: " + error.message;
+            status.style.color = "#dc3545";
+          }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
         });
       </script>
     </body>
@@ -70,50 +103,72 @@ app.get("/", (req, res) => {
   `);
 });
 
-// Handle form submission (testing: allow any time)
+// =====================
+// Submit Attendance
+// =====================
 app.post("/submit", (req, res) => {
-  let { name, latitude, longitude } = req.body;
-  let now = new Date();
+  const { name, latitude, longitude } = req.body;
+  const now = new Date();
 
-  // ===== TESTING VERSION: allow all times =====
-  // Remove the time restriction for testing
-  // let hour = now.getHours();
-  // let inMorning = (hour === 7);
-  // let inAfternoon = (hour === 13);
-  // if (!(inMorning || inAfternoon)) {
-  //   return res.status(403).send({status: "closed"});
-  // }
-
-  // Save record
-  let time = now.toLocaleString();
-  let record = `${name}, ${time}, ${latitude}, ${longitude}\n`;
+  // TEMP: Allow all times for testing
+  const record = `${name}, ${now.toLocaleString()}, ${latitude}, ${longitude}\n`;
   fs.appendFileSync(path.join(__dirname, "attendance.csv"), record);
 
-  console.log("📌 New record:", record.trim());
-  res.send({status: "success"});
+  console.log("📌 New attendance:", record.trim());
+  res.send({ status: "success" });
 });
 
-// Records page
+// =====================
+// Records Page
+// =====================
 app.get("/records", (req, res) => {
-  let filePath = path.join(__dirname, "attendance.csv");
+  const filePath = path.join(__dirname, "attendance.csv");
   if(!fs.existsSync(filePath)){
-    return res.send("No attendance records yet.");
+    return res.send("<h3>No attendance records yet.</h3>");
   }
 
-  let data = fs.readFileSync(filePath, "utf-8");
-  let rows = data.trim().split("\n");
-  let html = "<h2>Attendance Records</h2><table border='1' cellpadding='5'><tr><th>Name</th><th>Time</th><th>Latitude</th><th>Longitude</th></tr>";
+  const data = fs.readFileSync(filePath, "utf-8");
+  const rows = data.trim().split("\n");
+
+  let html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Attendance Records</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+      <style>
+        body { background: #f4f6f9; font-family: 'Segoe UI', sans-serif; padding: 30px; }
+        table { background: #fff; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { margin-bottom: 20px; color: #333; }
+      </style>
+    </head>
+    <body>
+      <h2>Attendance Records</h2>
+      <div class="table-responsive">
+        <table class="table table-striped table-bordered">
+          <thead class="table-dark">
+            <tr>
+              <th>Name</th>
+              <th>Time</th>
+              <th>Latitude</th>
+              <th>Longitude</th>
+            </tr>
+          </thead>
+          <tbody>`;
 
   rows.forEach(row => {
-    let cols = row.split(", ");
+    const cols = row.split(", ");
     html += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${cols[2]}</td><td>${cols[3]}</td></tr>`;
   });
 
-  html += "</table>";
+  html += `</tbody></table></div></body></html>`;
   res.send(html);
 });
 
-// Start server
+// =====================
+// Start Server
+// =====================
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Attendance system running at http://localhost:${PORT}`);
 });
