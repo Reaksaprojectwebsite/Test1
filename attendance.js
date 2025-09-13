@@ -1,5 +1,5 @@
 // =====================
-// Attendance System (Final Version)
+// Attendance System (Testing Version)
 // =====================
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -7,7 +7,7 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Render sets PORT automatically
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
@@ -56,7 +56,7 @@ app.get("/", (req, res) => {
             if(result.status === "success"){
               alert("✅ Attendance recorded!");
             } else {
-              alert("⏰ Attendance closed!");
+              alert("⚠️ Something went wrong!");
             }
 
             document.getElementById("name").value = "";
@@ -70,30 +70,47 @@ app.get("/", (req, res) => {
   `);
 });
 
-// Handle form submission
+// Handle form submission (testing: allow any time)
 app.post("/submit", (req, res) => {
   let { name, latitude, longitude } = req.body;
   let now = new Date();
 
-  // Get hours in 24h format
-  let hour = now.getHours();
-  let minute = now.getMinutes();
+  // ===== TESTING VERSION: allow all times =====
+  // Remove the time restriction for testing
+  // let hour = now.getHours();
+  // let inMorning = (hour === 7);
+  // let inAfternoon = (hour === 13);
+  // if (!(inMorning || inAfternoon)) {
+  //   return res.status(403).send({status: "closed"});
+  // }
 
-  // Allowed time ranges: 7:00–7:59 AM and 1:00–1:59 PM
-  let inMorning = (hour === 7);
-  let inAfternoon = (hour === 13);
-
-  if (!(inMorning || inAfternoon)) {
-    return res.status(403).send({status: "closed"});
-  }
-
-  // If allowed → save record
+  // Save record
   let time = now.toLocaleString();
   let record = `${name}, ${time}, ${latitude}, ${longitude}\n`;
   fs.appendFileSync(path.join(__dirname, "attendance.csv"), record);
 
   console.log("📌 New record:", record.trim());
   res.send({status: "success"});
+});
+
+// Records page
+app.get("/records", (req, res) => {
+  let filePath = path.join(__dirname, "attendance.csv");
+  if(!fs.existsSync(filePath)){
+    return res.send("No attendance records yet.");
+  }
+
+  let data = fs.readFileSync(filePath, "utf-8");
+  let rows = data.trim().split("\n");
+  let html = "<h2>Attendance Records</h2><table border='1' cellpadding='5'><tr><th>Name</th><th>Time</th><th>Latitude</th><th>Longitude</th></tr>";
+
+  rows.forEach(row => {
+    let cols = row.split(", ");
+    html += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${cols[2]}</td><td>${cols[3]}</td></tr>`;
+  });
+
+  html += "</table>";
+  res.send(html);
 });
 
 // Start server
